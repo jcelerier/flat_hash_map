@@ -169,11 +169,6 @@ struct sherwood_v3_entry
     ~sherwood_v3_entry()
     {
     }
-    static sherwood_v3_entry * empty_default_table()
-    {
-        static sherwood_v3_entry result[min_lookups] = { {}, {}, {}, {special_end_value} };
-        return result;
-    }
 
     bool has_value() const
     {
@@ -789,12 +784,22 @@ public:
     }
 
 private:
-    EntryPointer entries = Entry::empty_default_table();
+    EntryPointer entries = empty_default_table();
     size_t num_slots_minus_one = 0;
     typename HashPolicySelector<ArgumentHash>::type hash_policy;
     int8_t max_lookups = detailv3::min_lookups - 1;
     float _max_load_factor = 0.5f;
     size_t num_elements = 0;
+
+    EntryPointer empty_default_table()
+    {
+        EntryPointer result = AllocatorTraits::allocate(*this, detailv3::min_lookups);
+        EntryPointer special_end_item = result + static_cast<ptrdiff_t>(detailv3::min_lookups - 1);
+        for (EntryPointer it = result; it != special_end_item; ++it)
+            it->distance_from_desired = -1;
+        special_end_item->distance_from_desired = Entry::special_end_value;
+        return result;
+    }
 
     static int8_t compute_max_lookups(size_t num_buckets)
     {
@@ -875,16 +880,13 @@ private:
 
     void deallocate_data(EntryPointer begin, size_t num_slots_minus_one, int8_t max_lookups)
     {
-        if (begin != Entry::empty_default_table())
-        {
-            AllocatorTraits::deallocate(*this, begin, num_slots_minus_one + max_lookups + 1);
-        }
+        AllocatorTraits::deallocate(*this, begin, num_slots_minus_one + max_lookups + 1);
     }
 
     void reset_to_empty_state()
     {
         deallocate_data(entries, num_slots_minus_one, max_lookups);
-        entries = Entry::empty_default_table();
+        entries = empty_default_table();
         num_slots_minus_one = 0;
         hash_policy.reset();
         max_lookups = detailv3::min_lookups - 1;
@@ -1175,7 +1177,7 @@ struct prime_number_hash_policy
             5746614499066534157llu, 7240280573005008577llu, 9122181901073924329llu,
             11493228998133068689llu, 14480561146010017169llu, 18446744073709551557llu
         };
-        
+
         static constexpr uint64_t (* const mod_functions[])(uint64_t) =
         {
             &mod0, &mod2, &mod3, &mod5, &mod7, &mod11, &mod13, &mod17, &mod23, &mod29, &mod37,
